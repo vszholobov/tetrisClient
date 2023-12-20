@@ -38,12 +38,14 @@ func main() {
 
 	done := make(chan struct{})
 
-	go readProcessor(done, c)
-
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
-	sendProcessor(done, ticker, c, interrupt)
+	keyboardChannel := initInputChannel()
+	defer onExit(keyboardChannel, c)
+	handleSigtermExit(keyboardChannel, c)
+	go readProcessor(done, c, keyboardChannel)
+	sendProcessor(done, ticker, c, interrupt, keyboardChannel)
 }
 
 func sendProcessor(
@@ -51,11 +53,9 @@ func sendProcessor(
 	ticker *time.Ticker,
 	c *websocket.Conn,
 	interrupt chan os.Signal,
+	keyboardChannel *tty.TTY,
 ) {
 	keyboardSendChannel := make(chan rune)
-	keyboardChannel := initInputChannel()
-	defer onExit(keyboardChannel)
-	handleSigtermExit(keyboardChannel)
 	// input
 	go func(keyboardChannel *tty.TTY, keyboardSendChannel chan<- rune) {
 		for {
@@ -102,19 +102,20 @@ func sendProcessor(
 	}
 }
 
-func handleSigtermExit(keyboardChannel *tty.TTY) {
+func handleSigtermExit(keyboardChannel *tty.TTY, conn *websocket.Conn) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
-		onExit(keyboardChannel)
+		onExit(keyboardChannel, conn)
 		os.Exit(1)
 	}()
 }
 
 // onExit Closes keyboard input stream and makes cursor visible back
-func onExit(keyboardChannel *tty.TTY) {
+func onExit(keyboardChannel *tty.TTY, conn *websocket.Conn) {
 	keyboardChannel.Close()
+	conn.Close()
 }
 
 func initInputChannel() *tty.TTY {
@@ -125,7 +126,7 @@ func initInputChannel() *tty.TTY {
 	return keyPressedChannel
 }
 
-func readProcessor(done chan struct{}, c *websocket.Conn) {
+func readProcessor(done chan struct{}, c *websocket.Conn, keyboardChannel *tty.TTY) {
 	func() {
 		defer close(done)
 		for {
@@ -134,7 +135,12 @@ func readProcessor(done chan struct{}, c *websocket.Conn) {
 				log.Println("read:", err)
 				return
 			}
-			field, _ := big.NewInt(0).SetString(string(message), 10)
+			if message[0] == '0' {
+				log.Println("Lost")
+				onExit(keyboardChannel, c)
+				os.Exit(1)
+			}
+			field, _ := big.NewInt(0).SetString(string(message[1:]), 10)
 			PrintField(field)
 			//log.Printf("recv: %s", message)
 		}
