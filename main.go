@@ -24,6 +24,8 @@ var addr = flag.String("addr", "localhost:8080", "http service address")
 
 // https://github.com/gorilla/websocket/blob/main/examples/echo/server.go
 func main() {
+	InitClear()
+	CallClear()
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
@@ -42,7 +44,7 @@ func main() {
 	defer ticker.Stop()
 
 	keyboardChannel := initInputChannel()
-	defer onExit(keyboardChannel, c)
+	//defer onExit(keyboardChannel, c)
 	handleSigtermExit(keyboardChannel, c)
 	go readProcessor(done, c, keyboardChannel)
 	sendProcessor(done, ticker, c, interrupt, keyboardChannel)
@@ -116,6 +118,8 @@ func handleSigtermExit(keyboardChannel *tty.TTY, conn *websocket.Conn) {
 func onExit(keyboardChannel *tty.TTY, conn *websocket.Conn) {
 	keyboardChannel.Close()
 	conn.Close()
+	CallClear()
+	os.Exit(1)
 }
 
 func initInputChannel() *tty.TTY {
@@ -132,13 +136,13 @@ func readProcessor(done chan struct{}, c *websocket.Conn, keyboardChannel *tty.T
 		for {
 			_, message, err := c.ReadMessage()
 			if err != nil {
+				// TODO: если закрыли сокет, то попадем сюда. Нужно обработать и завершить без ошибки
 				log.Println("read:", err)
 				return
 			}
 			if message[0] == '0' {
 				log.Println("Lost")
 				onExit(keyboardChannel, c)
-				os.Exit(1)
 			}
 			field, _ := big.NewInt(0).SetString(string(message[1:]), 10)
 			PrintField(field)
