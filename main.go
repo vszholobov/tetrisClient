@@ -16,6 +16,9 @@ import (
 	"time"
 )
 
+const showCursorASCII = "\033[?25h"
+const hideCursorASCII = "\033[?25l"
+
 type Client struct {
 	conn *websocket.Conn
 }
@@ -26,6 +29,7 @@ var addr = flag.String("addr", "localhost:8080", "http service address")
 func main() {
 	InitClear()
 	CallClear()
+	hideCursor()
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
@@ -104,6 +108,14 @@ func sendProcessor(
 	}
 }
 
+func hideCursor() {
+	fmt.Print(hideCursorASCII)
+}
+
+func showCursor() {
+	fmt.Print(showCursorASCII)
+}
+
 func handleSigtermExit(keyboardChannel *tty.TTY, conn *websocket.Conn) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
@@ -116,6 +128,7 @@ func handleSigtermExit(keyboardChannel *tty.TTY, conn *websocket.Conn) {
 
 // onExit Closes keyboard input stream and makes cursor visible back
 func onExit(keyboardChannel *tty.TTY, conn *websocket.Conn) {
+	showCursor()
 	keyboardChannel.Close()
 	conn.Close()
 	CallClear()
