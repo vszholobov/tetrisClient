@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -33,7 +34,7 @@ func main() {
 	signal.Notify(interrupt, os.Interrupt)
 
 	u := url.URL{Scheme: "ws", Host: *addr, Path: "/echo"}
-	log.Printf("connecting to %s", u.String())
+	//log.Printf("connecting to %s", u.String())
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
@@ -161,35 +162,12 @@ func readProcessor(done chan struct{}, c *websocket.Conn, keyboardChannel *tty.T
 			speed := fields[2]
 			score := fields[3]
 			cleanCount := fields[4]
-			PrintField(field, speed, score, cleanCount)
+			nextPieceTypeIntRepr, err := strconv.Atoi(fields[5])
+			nextPieceType := PieceType(nextPieceTypeIntRepr)
+			PrintField(field, speed, score, cleanCount, nextPieceType)
 			//log.Printf("recv: %s", message)
 		}
 	}()
-}
-
-var builder = strings.Builder{}
-
-const moveToTopASCII = "\033[22A"
-
-func PrintField(field *big.Int, speed string, score string, cleanCount string) {
-	builder.Reset()
-	builder.WriteString(moveToTopASCII)
-	fieldStr := fmt.Sprintf("%b", field)
-	for i := 20; i >= 0; i-- {
-		line := fieldStr[i*12 : i*12+12]
-		line = strings.ReplaceAll(line, "1", " Ж ")
-		line = strings.ReplaceAll(line, "0", "   ")
-		builder.WriteString(line)
-		builder.WriteString("\n")
-	}
-	builder.WriteString("Score: ")
-	builder.WriteString(score)
-	builder.WriteString(" | Speed: ")
-	builder.WriteString(speed)
-	builder.WriteString(" | Cleaned: ")
-	builder.WriteString(cleanCount)
-	fmt.Println(builder.String())
-	//printNextPiece(field.NextPiece)
 }
 
 //func (gameField *Field) String() string {
