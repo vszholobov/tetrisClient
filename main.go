@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -153,12 +152,16 @@ func readProcessor(done chan struct{}, c *websocket.Conn, keyboardChannel *tty.T
 				log.Println("read:", err)
 				return
 			}
-			if message[0] == '0' {
+			fields := strings.Fields(string(message))
+			if fields[0] == "0" {
 				log.Println("Lost")
 				onExit(keyboardChannel, c)
 			}
-			field, _ := big.NewInt(0).SetString(string(message[1:]), 10)
-			PrintField(field)
+			field, _ := big.NewInt(0).SetString(string(fields[1]), 10)
+			speed := fields[2]
+			score := fields[3]
+			cleanCount := fields[4]
+			PrintField(field, speed, score, cleanCount)
 			//log.Printf("recv: %s", message)
 		}
 	}()
@@ -168,7 +171,7 @@ var builder = strings.Builder{}
 
 const moveToTopASCII = "\033[22A"
 
-func PrintField(field *big.Int) {
+func PrintField(field *big.Int, speed string, score string, cleanCount string) {
 	builder.Reset()
 	builder.WriteString(moveToTopASCII)
 	fieldStr := fmt.Sprintf("%b", field)
@@ -180,11 +183,11 @@ func PrintField(field *big.Int) {
 		builder.WriteString("\n")
 	}
 	builder.WriteString("Score: ")
-	builder.WriteString(strconv.Itoa(0))
+	builder.WriteString(score)
 	builder.WriteString(" | Speed: ")
-	builder.WriteString(strconv.Itoa(0))
+	builder.WriteString(speed)
 	builder.WriteString(" | Cleaned: ")
-	builder.WriteString(strconv.Itoa(0))
+	builder.WriteString(cleanCount)
 	fmt.Println(builder.String())
 	//printNextPiece(field.NextPiece)
 }
