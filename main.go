@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/mattn/go-tty"
@@ -23,7 +22,7 @@ type Client struct {
 	conn *websocket.Conn
 }
 
-var addr = flag.String("addr", "localhost:8080", "http service address")
+var addr = "localhost:8080"
 
 // https://github.com/gorilla/websocket/blob/main/examples/echo/server.go
 func main() {
@@ -33,7 +32,8 @@ func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	u := url.URL{Scheme: "ws", Host: *addr, Path: "/echo"}
+	sessionId := os.Args[1]
+	u := url.URL{Scheme: "ws", Host: addr, Path: "/connect/" + sessionId}
 	//log.Printf("connecting to %s", u.String())
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
@@ -122,7 +122,6 @@ func handleSigtermExit(keyboardChannel *tty.TTY, conn *websocket.Conn) {
 	go func() {
 		<-c
 		onExit(keyboardChannel, conn)
-		os.Exit(1)
 	}()
 }
 
