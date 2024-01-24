@@ -27,9 +27,6 @@ var addr = "localhost:8080"
 
 // https://github.com/gorilla/websocket/blob/main/examples/echo/server.go
 func main() {
-	InitClear()
-	CallClear()
-	hideCursor()
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
@@ -42,6 +39,10 @@ func main() {
 		log.Fatal("dial:", err)
 	}
 	defer connect.Close()
+
+	InitClear()
+	CallClear()
+	hideCursor()
 
 	done := make(chan struct{})
 
@@ -81,7 +82,7 @@ func sendProcessor(
 		case messageFromKeyboard := <-keyboardSendChannel:
 			err := c.WriteMessage(websocket.TextMessage, []byte(string(messageFromKeyboard)))
 			if err != nil {
-				log.Println("write:", err)
+				// log.Println("write:", err)
 				return
 			}
 		//case ticker := <-ticker.C:
