@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/gorilla/websocket"
-	"github.com/mattn/go-tty"
 	"log"
 	"math/big"
 	"net/url"
@@ -13,6 +11,9 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/gorilla/websocket"
+	"github.com/mattn/go-tty"
 )
 
 const showCursorASCII = "\033[?25h"
@@ -33,14 +34,14 @@ func main() {
 	signal.Notify(interrupt, os.Interrupt)
 
 	sessionId := os.Args[1]
-	u := url.URL{Scheme: "ws", Host: addr, Path: "/connect/" + sessionId}
+	u := url.URL{Scheme: "ws", Host: addr, Path: "/session/connect/" + sessionId}
 	//log.Printf("connecting to %s", u.String())
 
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	connect, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
 		log.Fatal("dial:", err)
 	}
-	defer c.Close()
+	defer connect.Close()
 
 	done := make(chan struct{})
 
@@ -49,9 +50,9 @@ func main() {
 
 	keyboardChannel := initInputChannel()
 	//defer onExit(keyboardChannel, c)
-	handleSigtermExit(keyboardChannel, c)
-	go readProcessor(done, c, keyboardChannel)
-	sendProcessor(done, ticker, c, interrupt, keyboardChannel)
+	handleSigtermExit(keyboardChannel, connect)
+	go readProcessor(done, connect, keyboardChannel)
+	sendProcessor(done, ticker, connect, interrupt, keyboardChannel)
 }
 
 func sendProcessor(
@@ -154,17 +155,30 @@ func readProcessor(done chan struct{}, c *websocket.Conn, keyboardChannel *tty.T
 			}
 			fields := strings.Fields(string(message))
 			if fields[0] == "0" {
-				log.Println("Lost")
-				onExit(keyboardChannel, c)
+				// self field
+				if fields[1] == "0" {
+					onExit(keyboardChannel, c)
+				}
+				field, _ := big.NewInt(0).SetString(string(fields[2]), 10)
+				speed := fields[3]
+				score := fields[4]
+				cleanCount := fields[5]
+				nextPieceTypeIntRepr, _ := strconv.Atoi(fields[6])
+				nextPieceType := PieceType(nextPieceTypeIntRepr)
+				PrintSelfField(field, speed, score, cleanCount, nextPieceType)
+			} else {
+				// enemy field
+				if fields[1] == "0" {
+
+				}
+				field, _ := big.NewInt(0).SetString(string(fields[2]), 10)
+				speed := fields[3]
+				score := fields[4]
+				cleanCount := fields[5]
+				nextPieceTypeIntRepr, _ := strconv.Atoi(fields[6])
+				nextPieceType := PieceType(nextPieceTypeIntRepr)
+				PrintEnemyField(field, speed, score, cleanCount, nextPieceType)
 			}
-			field, _ := big.NewInt(0).SetString(string(fields[1]), 10)
-			speed := fields[2]
-			score := fields[3]
-			cleanCount := fields[4]
-			nextPieceTypeIntRepr, err := strconv.Atoi(fields[5])
-			nextPieceType := PieceType(nextPieceTypeIntRepr)
-			PrintField(field, speed, score, cleanCount, nextPieceType)
-			//log.Printf("recv: %s", message)
 		}
 	}()
 }

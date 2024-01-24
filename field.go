@@ -10,6 +10,7 @@ const FieldWidth = 12
 const FieldHeight = 21
 const moveToTopASCII = "\033[22A"
 const moveRightASCII = "\r\033[36C"
+const moveRightEnemyFieldASCII = "\r\033[52C"
 const moveDownOneLineASCII = "\r\033[1B"
 const moveDownAllLinesASCII = "\r\033[17B"
 
@@ -35,26 +36,55 @@ var RepresentationByType = map[PieceType][]string{
 	SquareShape: {"     ЖЖ     ", "     ЖЖ     "},
 }
 
-var builder = strings.Builder{}
-
-func PrintField(field *big.Int, speed string, score string, cleanCount string, nextPieceType PieceType) {
-	builder.Reset()
-	builder.WriteString(moveToTopASCII)
+func PrintEnemyField(field *big.Int, speed string, score string, cleanCount string, nextPieceType PieceType) {
 	fieldStr := fmt.Sprintf("%b", field)
+	fmt.Print(moveToTopASCII)
+	fmt.Print(moveRightEnemyFieldASCII)
 	for i := 20; i >= 0; i-- {
 		line := fieldStr[i*12 : i*12+12]
 		line = strings.ReplaceAll(line, "1", " Ж ")
 		line = strings.ReplaceAll(line, "0", "   ")
-		builder.WriteString(line)
-		builder.WriteString("\n")
+		fmt.Print(line)
+		fmt.Print(moveDownOneLineASCII)
+		fmt.Print(moveRightEnemyFieldASCII)
+		// builder.WriteString(line)
+		// builder.WriteString("\n")
 	}
+	builder.Reset()
 	builder.WriteString("Score: ")
 	builder.WriteString(score)
 	builder.WriteString(" | Speed: ")
 	builder.WriteString(speed)
 	builder.WriteString(" | Cleaned: ")
 	builder.WriteString(cleanCount)
-	fmt.Println(builder.String())
+	fmt.Print(builder.String())
+	fmt.Print(moveDownOneLineASCII)
+	// printNextPiece(nextPieceType)
+}
+
+var builder = strings.Builder{}
+
+func PrintSelfField(field *big.Int, speed string, score string, cleanCount string, nextPieceType PieceType) {
+	fieldStr := fmt.Sprintf("%b", field)
+	fmt.Print(moveToTopASCII)
+	for i := 20; i >= 0; i-- {
+		line := fieldStr[i*12 : i*12+12]
+		line = strings.ReplaceAll(line, "1", " Ж ")
+		line = strings.ReplaceAll(line, "0", "   ")
+		fmt.Print(line)
+		fmt.Print(moveDownOneLineASCII)
+		// builder.WriteString(line)
+		// builder.WriteString("\n")
+	}
+	builder.Reset()
+	builder.WriteString("Score: ")
+	builder.WriteString(score)
+	builder.WriteString(" | Speed: ")
+	builder.WriteString(speed)
+	builder.WriteString(" | Cleaned: ")
+	builder.WriteString(cleanCount)
+	fmt.Print(builder.String())
+	fmt.Print(moveDownOneLineASCII)
 	printNextPiece(nextPieceType)
 }
 
