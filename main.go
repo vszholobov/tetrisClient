@@ -30,7 +30,7 @@ type CreateSessionResponse struct {
 	SessionId int64 `json:"sessionId"`
 }
 
-var addr = "localhost:8080"
+var addr = "84.201.177.35:8080"
 
 // https://github.com/gorilla/websocket/blob/main/examples/echo/server.go
 func main() {
