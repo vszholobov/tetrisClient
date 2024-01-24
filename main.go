@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math/big"
+	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
@@ -23,6 +26,10 @@ type Client struct {
 	conn *websocket.Conn
 }
 
+type CreateSessionResponse struct {
+	SessionId int64 `json:"sessionId"`
+}
+
 var addr = "localhost:8080"
 
 // https://github.com/gorilla/websocket/blob/main/examples/echo/server.go
@@ -30,9 +37,27 @@ func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	sessionId := os.Args[1]
+	operation := os.Args[1]
+
+	var sessionId string
+	if operation == "connect" {
+		sessionId = os.Args[2]
+	} else if operation == "create" {
+		response, createSessionError := http.Get("http://" + addr + "/session/create")
+		if createSessionError != nil {
+			panic(createSessionError.Error())
+		}
+		body, readResponseError := ioutil.ReadAll(response.Body)
+
+		if readResponseError != nil {
+			panic(readResponseError.Error())
+		}
+
+		var createSessionResponse CreateSessionResponse
+		json.Unmarshal(body, &createSessionResponse)
+		sessionId = strconv.FormatInt(createSessionResponse.SessionId, 10)
+	}
 	u := url.URL{Scheme: "ws", Host: addr, Path: "/session/connect/" + sessionId}
-	//log.Printf("connecting to %s", u.String())
 
 	connect, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
@@ -44,13 +69,14 @@ func main() {
 	CallClear()
 	hideCursor()
 
+	fmt.Println("SessionId: " + sessionId)
+
 	done := make(chan struct{})
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
 	keyboardChannel := initInputChannel()
-	//defer onExit(keyboardChannel, c)
 	handleSigtermExit(keyboardChannel, connect)
 	go readProcessor(done, connect, keyboardChannel)
 	sendProcessor(done, ticker, connect, interrupt, keyboardChannel)
@@ -123,16 +149,17 @@ func handleSigtermExit(keyboardChannel *tty.TTY, conn *websocket.Conn) {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
-		onExit(keyboardChannel, conn)
+		onExit(keyboardChannel, conn, "")
 	}()
 }
 
 // onExit Closes keyboard input stream and makes cursor visible back
-func onExit(keyboardChannel *tty.TTY, conn *websocket.Conn) {
+func onExit(keyboardChannel *tty.TTY, conn *websocket.Conn, exitMessage string) {
 	showCursor()
 	keyboardChannel.Close()
 	conn.Close()
 	CallClear()
+	fmt.Println(exitMessage)
 	os.Exit(1)
 }
 
@@ -158,7 +185,7 @@ func readProcessor(done chan struct{}, c *websocket.Conn, keyboardChannel *tty.T
 			if fields[0] == "0" {
 				// self field
 				if fields[1] == "0" {
-					onExit(keyboardChannel, c)
+					onExit(keyboardChannel, c, fields[2])
 				}
 				field, _ := big.NewInt(0).SetString(string(fields[2]), 10)
 				speed := fields[3]
