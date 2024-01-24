@@ -1,0 +1,46 @@
+#https://github.com/marketplace/actions/go-release-binaries
+on:
+  release:
+    types: [created]
+
+permissions:
+    contents: write
+    packages: write
+
+jobs:
+  release-darwin-arm64:
+    name: release darwin/arm64
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: wangyoucao577/go-release-action@v1
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        goos: darwin
+        goarch: arm64
+        compress_assets: "zip"
+        md5sum: FALSE
+  release-windows-amd64:
+    name: release windows/amd64
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: wangyoucao577/go-release-action@v1
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        goos: windows
+        goarch: amd64
+        compress_assets: "zip"
+        md5sum: FALSE
+  release-linux-amd64:
+    name: release linux/amd64
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: wangyoucao577/go-release-action@v1
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        goos: linux
+        goarch: amd64
+        compress_assets: "zip"
+        md5sum: FALSE
