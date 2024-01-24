@@ -1,8 +1,32 @@
-Сборка с указанием хоста при компиляции:
-GOOS=windows GOARCH=amd64 go build -ldflags="-X main.addr=158.160.11.79:8080"
+# Tetris Client
+Websocket terminal tetris client. 
 
-Запуск с созданием сессии:
+## Guide
+
+### Controls
+Controls are realised by buttons:
+- a = move piece left
+- s = move piece down
+- d = move piece right
+- q = rotate piece left
+- e = rotate piece right
+
+### Launch
+Create new session:
+```
 ./tetrisClient create
+```
 
-Запуск с подключением к сессии:
+Connect to existing session:
+```
 ./tetrisClient connect 123456789
+```
+
+## Demo
+The Websocket server runs on a remote computer and is controlled via an ssh connection on the left screen. Two websocket clients run on the same computer and connect to the same server
+
+### Scoring tetris:
+![Tetris.gif](./gifs/Tetris.gif)
+
+### Full Game:
+![DrawGame.gif](./gifs/DrawGame.gif)
