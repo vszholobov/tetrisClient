@@ -210,10 +210,3 @@ func readProcessor(done chan struct{}, c *websocket.Conn, keyboardChannel *tty.T
 		}
 	}()
 }
-
-//func (gameField *Field) String() string {
-//	newField := big.NewInt(0).Set(gameField.Val)
-//	newShape := big.NewInt(0).Set(gameField.CurrentPiece.GetVal())
-//	newField.Or(newField, newShape)
-//	return fmt.Sprintf("%b", newField)
-//}
