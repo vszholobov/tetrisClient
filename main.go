@@ -58,17 +58,7 @@ func main() {
 		json.Unmarshal(body, &createSessionResponse)
 		sessionId = strconv.FormatInt(createSessionResponse.SessionId, 10)
 	} else if operation == "list" {
-		response, getSessionsListError := http.Get("http://" + addr + "/session")
-		if getSessionsListError != nil {
-			panic(getSessionsListError.Error())
-		}
-		body, readResponseError := ioutil.ReadAll(response.Body)
-		if readResponseError != nil {
-			panic(readResponseError.Error())
-		}
-
-		listSessions := make([]SessionDto, 0)
-		json.Unmarshal(body, &listSessions)
+		listSessions := getSessionsList()
 		fmt.Println("Sessions:")
 		for _, session := range listSessions {
 			fmt.Printf("Id: %d Started: %t", session.SessionId, session.Started)
@@ -90,40 +80,52 @@ func main() {
 
 	fmt.Println("SessionId: " + sessionId)
 
-	done := make(chan struct{})
-
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-
+	// keyboard
 	keyboardChannel := initInputChannel()
 	handleSigtermExit(keyboardChannel, connect)
-	go readProcessor(done, connect, keyboardChannel)
-	sendProcessor(done, ticker, connect, interrupt, keyboardChannel)
+	keyboardInputChannel := make(chan rune)
+	go inputProcessor(keyboardChannel, keyboardInputChannel)
+
+	// server
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	go readProcessor(connect, keyboardChannel)
+	sendProcessor(ticker, connect, interrupt, keyboardInputChannel)
+}
+
+func getSessionsList() []SessionDto {
+	response, getSessionsListError := http.Get("http://" + addr + "/session")
+	if getSessionsListError != nil {
+		panic(getSessionsListError.Error())
+	}
+	body, readResponseError := ioutil.ReadAll(response.Body)
+	if readResponseError != nil {
+		panic(readResponseError.Error())
+	}
+
+	listSessions := make([]SessionDto, 0)
+	json.Unmarshal(body, &listSessions)
+	return listSessions
+}
+
+func inputProcessor(keyboardChannel *tty.TTY, keyboardSendChannel chan<- rune) {
+	for {
+		r, err := keyboardChannel.ReadRune()
+		if err != nil {
+			log.Fatal(err)
+		}
+		keyboardSendChannel <- r
+	}
 }
 
 func sendProcessor(
-	done chan struct{},
 	ticker *time.Ticker,
 	c *websocket.Conn,
 	interrupt chan os.Signal,
-	keyboardChannel *tty.TTY,
+	keyboardSendChannel chan rune,
 ) {
-	keyboardSendChannel := make(chan rune)
-	// input
-	go func(keyboardChannel *tty.TTY, keyboardSendChannel chan<- rune) {
-		for {
-			r, err := keyboardChannel.ReadRune()
-			if err != nil {
-				log.Fatal(err)
-			}
-			//fmt.Println("Key press => " + string(r))
-			keyboardSendChannel <- r
-		}
-	}(keyboardChannel, keyboardSendChannel)
 	for {
 		select {
-		case <-done:
-			return
 		case messageFromKeyboard := <-keyboardSendChannel:
 			err := c.WriteMessage(websocket.TextMessage, []byte(string(messageFromKeyboard)))
 			if err != nil {
@@ -147,7 +149,6 @@ func sendProcessor(
 				return
 			}
 			select {
-			case <-done:
 			case <-time.After(time.Second):
 			}
 			return
@@ -190,9 +191,9 @@ func initInputChannel() *tty.TTY {
 	return keyPressedChannel
 }
 
-func readProcessor(done chan struct{}, c *websocket.Conn, keyboardChannel *tty.TTY) {
+// readProcessor server handler
+func readProcessor(c *websocket.Conn, keyboardChannel *tty.TTY) {
 	func() {
-		defer close(done)
 		for {
 			_, message, err := c.ReadMessage()
 			if err != nil {
