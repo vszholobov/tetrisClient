@@ -22,12 +22,13 @@ import (
 const showCursorASCII = "\033[?25h"
 const hideCursorASCII = "\033[?25l"
 
-type Client struct {
-	conn *websocket.Conn
-}
-
 type CreateSessionResponse struct {
 	SessionId int64 `json:"sessionId"`
+}
+
+type SessionDto struct {
+	SessionId int64 `json:"sessionId"`
+	Started   bool  `json:"started"`
 }
 
 var addr = "84.201.177.35:8080"
@@ -56,6 +57,24 @@ func main() {
 		var createSessionResponse CreateSessionResponse
 		json.Unmarshal(body, &createSessionResponse)
 		sessionId = strconv.FormatInt(createSessionResponse.SessionId, 10)
+	} else if operation == "list" {
+		response, getSessionsListError := http.Get("http://" + addr + "/session")
+		if getSessionsListError != nil {
+			panic(getSessionsListError.Error())
+		}
+		body, readResponseError := ioutil.ReadAll(response.Body)
+		if readResponseError != nil {
+			panic(readResponseError.Error())
+		}
+
+		listSessions := make([]SessionDto, 0)
+		json.Unmarshal(body, &listSessions)
+		fmt.Println("Sessions:")
+		for _, session := range listSessions {
+			fmt.Printf("Id: %d Started: %t", session.SessionId, session.Started)
+			fmt.Println()
+		}
+		return
 	}
 	u := url.URL{Scheme: "ws", Host: addr, Path: "/session/connect/" + sessionId}
 
