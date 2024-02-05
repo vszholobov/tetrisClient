@@ -38,25 +38,28 @@ func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	operation := os.Args[1]
+	// keyboard
+	InitClear()
+	CallClear()
+	hideCursor()
+	keyboardChannel := initInputChannel()
+	keyboardInputChannel := make(chan rune)
+	go inputProcessor(keyboardChannel, keyboardInputChannel)
 
 	var sessionId string
-	if operation == "connect" {
+	if len(os.Args) < 2 {
+		menu := MakeMenu()
+		menu.showMenu()
+		menu.handleMenu(keyboardInputChannel)
+		if menu.isCreateSession {
+			sessionId = createSession()
+		} else {
+			sessionId = strconv.FormatInt(menu.sessionsList[menu.currentSessionIndex].SessionId, 10)
+		}
+	} else if operation := os.Args[1]; operation == "connect" {
 		sessionId = os.Args[2]
 	} else if operation == "create" {
-		response, createSessionError := http.Get("http://" + addr + "/session/create")
-		if createSessionError != nil {
-			panic(createSessionError.Error())
-		}
-		body, readResponseError := ioutil.ReadAll(response.Body)
-
-		if readResponseError != nil {
-			panic(readResponseError.Error())
-		}
-
-		var createSessionResponse CreateSessionResponse
-		json.Unmarshal(body, &createSessionResponse)
-		sessionId = strconv.FormatInt(createSessionResponse.SessionId, 10)
+		sessionId = createSession()
 	} else if operation == "list" {
 		listSessions := getSessionsList()
 		fmt.Println("Sessions:")
@@ -65,32 +68,44 @@ func main() {
 			fmt.Println()
 		}
 		return
+	} else {
+		fmt.Println("Error")
+		return
 	}
-	u := url.URL{Scheme: "ws", Host: addr, Path: "/session/connect/" + sessionId}
+	sessionConnectUrl := url.URL{Scheme: "ws", Host: addr, Path: "/session/connect/" + sessionId}
 
-	connect, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	connect, _, err := websocket.DefaultDialer.Dial(sessionConnectUrl.String(), nil)
 	if err != nil {
 		log.Fatal("dial:", err)
 	}
 	defer connect.Close()
 
-	InitClear()
-	CallClear()
-	hideCursor()
+	// keyboard
+	handleSigtermExit(keyboardChannel, connect)
 
 	fmt.Println("SessionId: " + sessionId)
-
-	// keyboard
-	keyboardChannel := initInputChannel()
-	handleSigtermExit(keyboardChannel, connect)
-	keyboardInputChannel := make(chan rune)
-	go inputProcessor(keyboardChannel, keyboardInputChannel)
 
 	// server
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	go readProcessor(connect, keyboardChannel)
 	sendProcessor(ticker, connect, interrupt, keyboardInputChannel)
+}
+
+func createSession() string {
+	response, createSessionError := http.Get("http://" + addr + "/session/create")
+	if createSessionError != nil {
+		panic(createSessionError.Error())
+	}
+	body, readResponseError := ioutil.ReadAll(response.Body)
+
+	if readResponseError != nil {
+		panic(readResponseError.Error())
+	}
+
+	var createSessionResponse CreateSessionResponse
+	json.Unmarshal(body, &createSessionResponse)
+	return strconv.FormatInt(createSessionResponse.SessionId, 10)
 }
 
 func getSessionsList() []SessionDto {
@@ -229,4 +244,78 @@ func readProcessor(c *websocket.Conn, keyboardChannel *tty.TTY) {
 			}
 		}
 	}()
+}
+
+type Menu struct {
+	currentSessionIndex int
+	sessionsList        []SessionDto
+	isEnded             bool
+	isCreateSession     bool
+}
+
+func MakeMenu() Menu {
+	sessionsList := getSessionsList()
+	return Menu{
+		currentSessionIndex: 0,
+		sessionsList:        sessionsList,
+		isEnded:             false,
+		isCreateSession:     false,
+	}
+}
+
+func (menu *Menu) showMenu() {
+	CallClear()
+	fmt.Println(" Tetris🕹️")
+	fmt.Println("----------")
+	for index, session := range menu.sessionsList {
+		currentItem := ""
+		if index == menu.currentSessionIndex {
+			currentItem += "\033[30;5;107m"
+		}
+		currentItem += strconv.FormatInt(session.SessionId, 10)
+		currentItem += " "
+		currentItem += strconv.FormatBool(session.Started)
+		if index == menu.currentSessionIndex {
+			currentItem += "\033[0m"
+		}
+		fmt.Println(currentItem)
+	}
+}
+
+func (menu *Menu) handleMenu(keyboardInputChannel chan rune) {
+	for !menu.isEnded {
+		input := <-keyboardInputChannel
+		// process only reload on empty field to exclude indexes out of range errors
+		if len(menu.sessionsList) == 0 && input != 114 && input != 99 {
+			continue
+		}
+		switch input {
+		case 115:
+			// s
+			menu.currentSessionIndex++
+			menu.currentSessionIndex = menu.currentSessionIndex % len(menu.sessionsList)
+		case 119:
+			// w
+			menu.currentSessionIndex--
+			if menu.currentSessionIndex < 0 {
+				menu.currentSessionIndex = len(menu.sessionsList) - 1
+			}
+		case 114:
+			// r
+			menu.sessionsList = getSessionsList()
+		case 99:
+			// c
+			menu.isEnded = true
+			menu.isCreateSession = true
+			continue
+		case 13:
+			// enter
+			menu.isEnded = true
+			continue
+		default:
+			// skip unknown input
+			continue
+		}
+		menu.showMenu()
+	}
 }
