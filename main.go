@@ -31,7 +31,13 @@ type SessionDto struct {
 	Started   bool  `json:"started"`
 }
 
+type Session struct {
+	conn            *websocket.Conn
+	keyboardChannel *tty.TTY
+}
+
 var addr = "84.201.177.35:8080"
+var session *Session
 
 // https://github.com/gorilla/websocket/blob/main/examples/echo/server.go
 func main() {
@@ -42,8 +48,10 @@ func main() {
 	InitClear()
 	CallClear()
 	hideCursor()
-	keyboardChannel := initInputChannel()
 	keyboardInputChannel := make(chan rune)
+	keyboardChannel := initInputChannel()
+	session = &Session{keyboardChannel: keyboardChannel}
+	handleSigtermExit(session)
 	go inputProcessor(keyboardChannel, keyboardInputChannel)
 
 	var sessionId string
@@ -51,6 +59,9 @@ func main() {
 		menu := MakeMenu()
 		menu.showMenu()
 		menu.handleMenu(keyboardInputChannel)
+		if menu.isExit {
+			onExit("")
+		}
 		if menu.isCreateSession {
 			sessionId = createSession()
 		} else {
@@ -75,13 +86,11 @@ func main() {
 	sessionConnectUrl := url.URL{Scheme: "ws", Host: addr, Path: "/session/connect/" + sessionId}
 
 	connect, _, err := websocket.DefaultDialer.Dial(sessionConnectUrl.String(), nil)
+	session.conn = connect
 	if err != nil {
 		log.Fatal("dial:", err)
 	}
 	defer connect.Close()
-
-	// keyboard
-	handleSigtermExit(keyboardChannel, connect)
 
 	fmt.Println("SessionId: " + sessionId)
 
@@ -179,23 +188,13 @@ func showCursor() {
 	fmt.Print(showCursorASCII)
 }
 
-func handleSigtermExit(keyboardChannel *tty.TTY, conn *websocket.Conn) {
+func handleSigtermExit(session *Session) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
-		onExit(keyboardChannel, conn, "")
+		onExit("")
 	}()
-}
-
-// onExit Closes keyboard input stream and makes cursor visible back
-func onExit(keyboardChannel *tty.TTY, conn *websocket.Conn, exitMessage string) {
-	showCursor()
-	keyboardChannel.Close()
-	conn.Close()
-	CallClear()
-	fmt.Println(exitMessage)
-	os.Exit(1)
 }
 
 func initInputChannel() *tty.TTY {
@@ -220,7 +219,7 @@ func readProcessor(c *websocket.Conn, keyboardChannel *tty.TTY) {
 			if fields[0] == "0" {
 				// self field
 				if fields[1] == "0" {
-					onExit(keyboardChannel, c, fields[2])
+					onExit(fields[2])
 				}
 				field, _ := big.NewInt(0).SetString(string(fields[2]), 10)
 				speed := fields[3]
@@ -246,11 +245,26 @@ func readProcessor(c *websocket.Conn, keyboardChannel *tty.TTY) {
 	}()
 }
 
+// onExit Closes keyboard input stream and makes cursor visible back
+func onExit(exitMessage string) {
+	showCursor()
+	CallClear()
+	fmt.Println(exitMessage)
+	if session.keyboardChannel != nil {
+		session.keyboardChannel.Close()
+	}
+	if session.conn != nil {
+		session.conn.Close()
+	}
+	os.Exit(0)
+}
+
 type Menu struct {
 	currentSessionIndex int
 	sessionsList        []SessionDto
 	isEnded             bool
 	isCreateSession     bool
+	isExit              bool
 }
 
 func MakeMenu() Menu {
@@ -260,6 +274,7 @@ func MakeMenu() Menu {
 		sessionsList:        sessionsList,
 		isEnded:             false,
 		isCreateSession:     false,
+		isExit:              false,
 	}
 }
 
@@ -285,17 +300,19 @@ func (menu *Menu) showMenu() {
 func (menu *Menu) handleMenu(keyboardInputChannel chan rune) {
 	for !menu.isEnded {
 		input := <-keyboardInputChannel
-		// process only reload on empty field to exclude indexes out of range errors
-		if len(menu.sessionsList) == 0 && input != 114 && input != 99 {
-			continue
-		}
 		switch input {
 		case 115:
 			// s
+			if len(menu.sessionsList) == 0 {
+				continue
+			}
 			menu.currentSessionIndex++
 			menu.currentSessionIndex = menu.currentSessionIndex % len(menu.sessionsList)
 		case 119:
 			// w
+			if len(menu.sessionsList) == 0 {
+				continue
+			}
 			menu.currentSessionIndex--
 			if menu.currentSessionIndex < 0 {
 				menu.currentSessionIndex = len(menu.sessionsList) - 1
@@ -310,8 +327,15 @@ func (menu *Menu) handleMenu(keyboardInputChannel chan rune) {
 			continue
 		case 13:
 			// enter
+			if len(menu.sessionsList) == 0 {
+				continue
+			}
 			menu.isEnded = true
 			continue
+		case 27:
+			// esc
+			menu.isEnded = true
+			menu.isExit = true
 		default:
 			// skip unknown input
 			continue
