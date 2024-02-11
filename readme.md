@@ -12,6 +12,16 @@ Controls are realised by buttons:
 - e = rotate piece right
 
 ### Launch
+Show help menu
+```
+./tetrisClient help
+```
+
+Launch menu
+```
+./tetrisClient
+```
+
 Create new session:
 ```
 ./tetrisClient create
@@ -20,6 +30,11 @@ Create new session:
 Connect to existing session:
 ```
 ./tetrisClient connect 123456789
+```
+
+Show list of existing sessions:
+```
+./tetrisClient list
 ```
 
 ## Demo
