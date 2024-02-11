@@ -79,8 +79,33 @@ func main() {
 			fmt.Println()
 		}
 		return
+	} else if operation == "help" {
+		exitMessage := `
+Run client menu by launching the application without arguments
+List of control keys:
+1) Menu
+* r - reload running sessions list
+* c - create new session
+* w - move session list cursor up
+* s - move session list cursor down
+* enter - connect to selected session
+* e - exit game
+2) Game
+* a - move piece left
+* d - move piece right
+* s - move piece down
+* q - rotate piece left
+* e - rotate piece right
+
+It is also available to run the client with command line arguments
+* connect <sessionId> - connect to existing session
+* create              - create new session
+* list                - show list of existing sessions
+`
+		onExit(exitMessage)
+		return
 	} else {
-		fmt.Println("Error")
+		onExit("Operation '" + operation + "' does not exist. See full list by running 'help' operation")
 		return
 	}
 	sessionConnectUrl := url.URL{Scheme: "ws", Host: addr, Path: "/session/connect/" + sessionId}
@@ -332,8 +357,8 @@ func (menu *Menu) handleMenu(keyboardInputChannel chan rune) {
 			}
 			menu.isEnded = true
 			continue
-		case 27:
-			// esc
+		case 101:
+			// e
 			menu.isEnded = true
 			menu.isExit = true
 		default:
