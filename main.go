@@ -36,7 +36,7 @@ type Session struct {
 	keyboardChannel *tty.TTY
 }
 
-var addr = "84.201.177.35:8080"
+var addr = "tetris.vszholobov.ru:8080"
 var session *Session
 
 // https://github.com/gorilla/websocket/blob/main/examples/echo/server.go
