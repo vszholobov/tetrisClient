@@ -61,7 +61,14 @@ func PrintEnemyField(field *big.Int, speed string, score string, cleanCount stri
 
 var builder = strings.Builder{}
 
-func PrintSelfField(field *big.Int, speed string, score string, cleanCount string, nextPieceType PieceType) {
+func PrintSelfField(
+	field *big.Int,
+	speed string,
+	score string,
+	cleanCount string,
+	nextPieceType PieceType,
+	pingMs string,
+) {
 	fieldStr := fmt.Sprintf("%b", field)
 	fmt.Print(moveToTopASCII)
 	for i := FieldHeight - 1; i >= 0; i-- {
@@ -78,6 +85,9 @@ func PrintSelfField(field *big.Int, speed string, score string, cleanCount strin
 	builder.WriteString(speed)
 	builder.WriteString(" | Cleaned: ")
 	builder.WriteString(cleanCount)
+	builder.WriteString(" | Ping: ")
+	builder.WriteString(pingMs)
+	builder.WriteString("    ")
 	fmt.Print(builder.String())
 	fmt.Print(moveDownOneLineASCII)
 	printNextPiece(nextPieceType)

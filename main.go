@@ -34,6 +34,7 @@ type SessionDto struct {
 type Session struct {
 	conn            *websocket.Conn
 	keyboardChannel *tty.TTY
+	pingMs          int64
 }
 
 var addr = "tetris.vszholobov.ru:8080"
@@ -109,13 +110,26 @@ It is also available to run the client with command line arguments
 		return
 	}
 	sessionConnectUrl := url.URL{Scheme: "ws", Host: addr, Path: "/session/connect/" + sessionId}
+	pingMeasureUrl := url.URL{Scheme: "ws", Host: addr, Path: "/session/ping/" + sessionId}
 
-	connect, _, err := websocket.DefaultDialer.Dial(sessionConnectUrl.String(), nil)
+	connect, _, _ := websocket.DefaultDialer.Dial(sessionConnectUrl.String(), nil)
 	session.conn = connect
+	pingConnect, _, err := websocket.DefaultDialer.Dial(pingMeasureUrl.String(), nil)
 	if err != nil {
-		log.Fatal("dial:", err)
+		fmt.Print(err)
 	}
+	pingConnect.SetPingHandler(func(appData string) error {
+		start := time.Now()
+		err2 := pingConnect.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(time.Second*10))
+		session.pingMs = time.Now().Sub(start).Microseconds()
+		return err2
+	})
+	go func() {
+		pingConnect.ReadMessage()
+	}()
+
 	defer connect.Close()
+	defer pingConnect.Close()
 
 	fmt.Println("SessionId: " + sessionId)
 
@@ -252,7 +266,7 @@ func readProcessor(c *websocket.Conn, keyboardChannel *tty.TTY) {
 				cleanCount := fields[5]
 				nextPieceTypeIntRepr, _ := strconv.Atoi(fields[6])
 				nextPieceType := PieceType(nextPieceTypeIntRepr)
-				PrintSelfField(field, speed, score, cleanCount, nextPieceType)
+				PrintSelfField(field, speed, score, cleanCount, nextPieceType, getPingRepresentation())
 			} else {
 				// enemy field
 				if fields[1] == "0" {
@@ -268,6 +282,14 @@ func readProcessor(c *websocket.Conn, keyboardChannel *tty.TTY) {
 			}
 		}
 	}()
+}
+
+func getPingRepresentation() string {
+	if session.pingMs < 1000 {
+		return strconv.FormatInt(session.pingMs, 10) + "ms"
+	} else {
+		return fmt.Sprintf("%.1fs", float64(session.pingMs)/1000)
+	}
 }
 
 // onExit Closes keyboard input stream and makes cursor visible back
