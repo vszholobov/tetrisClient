@@ -13,15 +13,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
+	"tetrisClient/keyboard"
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/mattn/go-tty"
 )
-
-const showCursorASCII = "\033[?25h"
-const hideCursorASCII = "\033[?25l"
 
 type CreateSessionResponse struct {
 	SessionId int64 `json:"sessionId"`
@@ -33,11 +29,11 @@ type SessionDto struct {
 }
 
 type Session struct {
-	conn            *websocket.Conn
-	keyboardChannel *tty.TTY
-	pingMs          uint64
-	endSessionMutex sync.Mutex
-	isSessionEnded  bool
+	conn                   *websocket.Conn
+	keyboardInputProcessor *keyboard.InputProcessor
+	pingMs                 uint64
+	endSessionMutex        sync.Mutex
+	isSessionEnded         bool
 }
 
 var addr = "tetris.vszholobov.ru:8080"
@@ -47,22 +43,24 @@ var session *Session
 func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
+	handleSigtermExit(interrupt)
 
 	// keyboard
-	InitClear()
-	CallClear()
-	hideCursor()
-	keyboardInputChannel := make(chan rune)
-	keyboardChannel := initInputChannel()
-	session = &Session{keyboardChannel: keyboardChannel}
-	handleSigtermExit(session)
-	go inputProcessor(keyboardChannel, keyboardInputChannel)
+	keyboard.InitClear()
+	keyboard.CallClear()
+	keyboard.HideCursor()
+
+	inputProcessor := keyboard.MakeInputProcessor()
+	defer inputProcessor.Close()
+	defer keyboard.ShowCursor()
+	go inputProcessor.ProcessKeyboardInput()
+	session = &Session{keyboardInputProcessor: inputProcessor}
 
 	var sessionId string
 	if len(os.Args) < 2 {
 		menu := MakeMenu()
 		menu.showMenu()
-		menu.handleMenu(keyboardInputChannel)
+		menu.handleMenu(inputProcessor.GetKeyboardInputTransferChannel())
 		if menu.isExit {
 			onExit("")
 		}
@@ -115,7 +113,6 @@ It is also available to run the client with command line arguments
 	sessionConnectUrl := url.URL{Scheme: "ws", Host: addr, Path: "/session/connect/" + sessionId}
 
 	connect, _, _ := websocket.DefaultDialer.Dial(sessionConnectUrl.String(), nil)
-	session.conn = connect
 	connect.SetPingHandler(func(appData string) error {
 		return connect.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(time.Second*10))
 	})
@@ -123,13 +120,13 @@ It is also available to run the client with command line arguments
 		onExit(strconv.Itoa(code))
 		return nil
 	})
-	defer connect.Close()
+	session.conn = connect
+	defer session.conn.Close()
 	fmt.Println("SessionId: " + sessionId)
 
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
+	// TODO: exit on interrupt message
 	go readProcessor(connect)
-	sendProcessor(ticker, connect, interrupt, keyboardInputChannel)
+	sendProcessor(connect, interrupt, inputProcessor.GetKeyboardInputTransferChannel())
 }
 
 func createSession() string {
@@ -163,18 +160,7 @@ func getSessionsList() []SessionDto {
 	return listSessions
 }
 
-func inputProcessor(keyboardChannel *tty.TTY, keyboardSendChannel chan<- rune) {
-	for {
-		r, err := keyboardChannel.ReadRune()
-		if err != nil {
-			log.Fatal(err)
-		}
-		keyboardSendChannel <- r
-	}
-}
-
 func sendProcessor(
-	ticker *time.Ticker,
 	c *websocket.Conn,
 	interrupt chan os.Signal,
 	keyboardSendChannel chan rune,
@@ -188,46 +174,16 @@ func sendProcessor(
 				return
 			}
 		case <-interrupt:
-			log.Println("interrupt")
-
-			// Cleanly close the connection by sending a close message and then
-			// waiting (with timeout) for the server to close the connection.
-			err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-			if err != nil {
-				log.Println("write close:", err)
-				return
-			}
-			select {
-			case <-time.After(time.Second):
-			}
 			return
 		}
 	}
 }
 
-func hideCursor() {
-	fmt.Print(hideCursorASCII)
-}
-
-func showCursor() {
-	fmt.Print(showCursorASCII)
-}
-
-func handleSigtermExit(session *Session) {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+func handleSigtermExit(interrupt chan os.Signal) {
 	go func() {
-		<-c
+		<-interrupt
 		onExit("")
 	}()
-}
-
-func initInputChannel() *tty.TTY {
-	keyPressedChannel, err := tty.Open()
-	if err != nil {
-		log.Fatal(err)
-	}
-	return keyPressedChannel
 }
 
 // readProcessor server handler
@@ -285,11 +241,11 @@ func onExit(exitMessage string) {
 	session.endSessionMutex.Lock()
 	if !session.isSessionEnded {
 		session.isSessionEnded = true
-		showCursor()
-		CallClear()
+		keyboard.ShowCursor()
+		keyboard.CallClear()
 		fmt.Println(exitMessage)
-		if session.keyboardChannel != nil {
-			session.keyboardChannel.Close()
+		if session.keyboardInputProcessor != nil {
+			session.keyboardInputProcessor.Close()
 		}
 		if session.conn != nil {
 			session.conn.Close()
@@ -319,7 +275,7 @@ func MakeMenu() Menu {
 }
 
 func (menu *Menu) showMenu() {
-	CallClear()
+	keyboard.CallClear()
 	fmt.Println(" Tetris🕹️")
 	fmt.Println("----------")
 	for index, session := range menu.sessionsList {

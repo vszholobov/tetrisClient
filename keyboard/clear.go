@@ -1,6 +1,7 @@
-package main
+package keyboard
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
@@ -35,4 +36,15 @@ func CallClear() {
 	} else { //unsupported platform
 		panic("Your platform is unsupported! I can't clear terminal screen :(")
 	}
+}
+
+const showCursorASCII = "\033[?25h"
+const hideCursorASCII = "\033[?25l"
+
+func HideCursor() {
+	fmt.Print(hideCursorASCII)
+}
+
+func ShowCursor() {
+	fmt.Print(showCursorASCII)
 }
